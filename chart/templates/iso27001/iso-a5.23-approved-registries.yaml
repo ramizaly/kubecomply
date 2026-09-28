@@ -6,6 +6,7 @@
 {{- fail "compliance.frameworks.iso27001.approvedRegistries must list at least one registry pattern when this policy is enabled" }}
 {{- end }}
 {{- $registries := join " | " $fw.approvedRegistries }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -38,6 +39,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-

@@ -30,6 +30,8 @@ spec:
   background: true
   rules:
     # Keep in sync with the context lookup in iso-a8.24-encrypted-storage.yaml.
+    # compliance.frameworks.iso27001.namespaces does not apply here:
+    # StorageClass is cluster-scoped, it has no namespace to filter on.
     - name: storageclass-declares-encryption
       match:
         any:

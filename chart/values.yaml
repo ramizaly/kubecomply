@@ -7,20 +7,39 @@ compliance:
     cis:
       enabled: false
       mode: audit
+      # Which namespaces these policies actually apply to (admission checks
+      # AND background scan) — not just whether violations are rejected vs.
+      # reported. Default ["*"] = every namespace. Narrow this if you only
+      # want to run compliance checks against a subset of the cluster (e.g.
+      # ["team-a"] scans and applies mode only inside team-a; every other
+      # namespace is untouched — no report entries, no rejections, nothing).
+      # A few cluster-scoped policies (targeting ClusterRole/StorageClass,
+      # not namespace-scoped resources) ignore this — see the per-policy
+      # note in their template file. Override per-policy below the same way
+      # as `mode`. Can be set at install/upgrade time, e.g.:
+      #   --set compliance.frameworks.iso27001.namespaces={team-a}
+      namespaces:
+        - "*"
       # Per-policy overrides, keyed by the ClusterPolicy's metadata.name
       # (e.g. the file's basename under chart/templates/<framework>/).
       #   policies:
       #     iso-a8.2-no-privileged-nonroot:
-      #       enabled: true    # set false to skip this one policy entirely
-      #       mode: enforce    # overrides the framework-level mode above
+      #       enabled: true       # set false to skip this policy entirely
+      #       mode: enforce       # overrides the framework-level mode above
+      #       namespaces:         # overrides the framework-level list above
+      #         - team-a
       policies: {}
 
     iso27001:
       enabled: true
       mode: audit
+      namespaces:
+        - "*"
       policies: {}
         # iso-a8.2-no-privileged-nonroot:
         #   mode: enforce
+        #   namespaces:
+        #     - team-a
 
       # Registry allowlist enforced by iso-a5.23-approved-registries.
       # Kyverno wildcard patterns, matched against the full image reference.
@@ -43,11 +62,15 @@ compliance:
     soc2:
       enabled: false
       mode: audit
+      namespaces:
+        - "*"
       policies: {}
 
     hipaa:
       enabled: false
       mode: audit
+      namespaces:
+        - "*"
       policies: {}
 
 # --- Subchart values ---------------------------------------------------------

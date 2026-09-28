@@ -2,6 +2,7 @@
 {{- $name := "iso-a8.24-encrypted-storage" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -36,6 +37,12 @@ spec:
           - resources:
               kinds:
                 - PersistentVolumeClaim
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
@@ -51,6 +58,12 @@ spec:
           - resources:
               kinds:
                 - PersistentVolumeClaim
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
       preconditions:
         all:
           - key: "{{ "{{" }} request.object.spec.storageClassName || '' {{ "}}" }}"

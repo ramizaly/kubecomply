@@ -26,6 +26,13 @@ spec:
   background: true
   rules:
     - name: no-wildcard-verbs-or-resources
+      # compliance.frameworks.iso27001.namespaces is intentionally not
+      # applied here: this rule mixes a namespaced kind (Role) with a
+      # cluster-scoped one (ClusterRole), and Kyverno's namespace filter
+      # would either not apply to ClusterRole or silently drop it from
+      # matching, neither of which is what "scan only these namespaces"
+      # should mean for a wildcard-RBAC check. Scope with Kyverno's
+      # `exclude` block on Role names instead if needed.
       match:
         any:
           - resources:

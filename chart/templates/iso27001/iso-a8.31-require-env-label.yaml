@@ -6,6 +6,7 @@
 {{- fail "compliance.frameworks.iso27001.environmentLabelValues must list at least one value when this policy is enabled" }}
 {{- end }}
 {{- $envValues := join " | " $fw.environmentLabelValues }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -37,6 +38,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-

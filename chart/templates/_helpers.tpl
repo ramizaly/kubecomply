@@ -38,3 +38,25 @@ Usage:
 {{- end -}}
 {{- $mode -}}
 {{- end -}}
+
+{{/*
+Resolve which namespaces a policy applies to at all: a per-policy
+`namespaces` override wins, otherwise the framework's default applies,
+otherwise ["*"] (every namespace). Feeds Kyverno's
+match.any[].resources.namespaces, so this scopes BOTH the admission check
+and the background scan — a namespace left out gets no report entries and
+no rejections, full stop, regardless of mode. (Kept separate from `mode`:
+this decides *where the policy exists*, mode decides *audit vs. reject
+where it exists*.)
+
+Renders a comma-joined string (namespace names can't contain commas), since
+named templates can only return a string.
+
+Usage:
+  {{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" "iso-a8.2-no-privileged-nonroot")) }}
+*/}}
+{{- define "compliance.namespaces" -}}
+{{- $override := index .framework.policies .name | default dict -}}
+{{- $ns := $override.namespaces | default .framework.namespaces | default (list "*") -}}
+{{- join "," $ns -}}
+{{- end -}}

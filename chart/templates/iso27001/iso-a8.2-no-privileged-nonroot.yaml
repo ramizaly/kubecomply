@@ -2,6 +2,7 @@
 {{- $name := "iso-a8.2-no-privileged-nonroot" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -30,6 +31,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
@@ -56,6 +63,12 @@ spec:
           - resources:
               kinds:
                 - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
