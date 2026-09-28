@@ -45,7 +45,7 @@ spec:
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
-          RBAC rule {{ "{{" }} elementIndex {{ "}}" }} in {{ "{{" }} request.object.kind {{ "}}" }}
+          A rule in {{ "{{" }} request.object.kind {{ "}}" }}
           '{{ "{{" }} request.object.metadata.name {{ "}}" }}' uses a wildcard ('*') in verbs or
           resources (ISO 27001 A.5.15). List permissions explicitly.
         foreach:
