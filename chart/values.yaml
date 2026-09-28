@@ -59,6 +59,20 @@ compliance:
         - staging
         - prod
 
+      # Linux capabilities containers may not add, enforced by
+      # iso-a8.18-disallow-dangerous-capabilities. This is a denylist, not
+      # an allowlist — capabilities.drop isn't required, only these
+      # specific adds are blocked. Extend if your threat model needs more.
+      disallowedCapabilities:
+        - ALL
+        - NET_ADMIN
+        - NET_RAW
+        - SYS_ADMIN
+        - SYS_MODULE
+        - SYS_PTRACE
+        - SYS_RAWIO
+        - DAC_READ_SEARCH
+
     soc2:
       enabled: false
       mode: audit

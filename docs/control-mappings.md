@@ -19,6 +19,8 @@ Source of truth for control text is the `compliance.framework/control-text` anno
 | A.8.31 | `chart/templates/iso27001/iso-a8.31-require-env-label.yaml` | Drafted, untested | Separation of environments — require `environment` label ∈ {dev, test, staging, prod}. |
 | A.8.6 | `chart/templates/iso27001/iso-a8.6-require-resources.yaml` | Drafted, untested | Capacity management — require CPU/memory requests and limits. |
 | A.8.28 | `chart/templates/iso27001/iso-a8.28-secure-coding-hardening.yaml` | Drafted, untested | Secure coding — containers must set `readOnlyRootFilesystem: true`; Pods must not set `hostPID: true`. |
+| A.8.18 | `chart/templates/iso27001/iso-a8.18-disallow-dangerous-capabilities.yaml` | Drafted, untested | Use of privileged utility programs — containers must not add capabilities from a denylist (`compliance.frameworks.iso27001.disallowedCapabilities`, default includes `ALL`, `NET_ADMIN`, `SYS_ADMIN`, etc.). |
+| A.8.21 | `chart/templates/iso27001/iso-a8.21-no-host-network.yaml` | Drafted, untested | Security of network services — Pods must not set `hostNetwork: true` or `hostIPC: true`. |
 
 ## CIS Kubernetes Benchmark
 

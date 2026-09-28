@@ -1,0 +1,78 @@
+{{- $fw := .Values.compliance.frameworks.iso27001 -}}
+{{- $name := "iso-a8.18-disallow-dangerous-capabilities" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+{{- if not $fw.disallowedCapabilities }}
+{{- fail "compliance.frameworks.iso27001.disallowedCapabilities must list at least one capability when this policy is enabled" }}
+{{- end }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Disallow Dangerous Linux Capabilities"
+    policies.kyverno.io/category: "ISO 27001"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Capabilities like NET_ADMIN, SYS_ADMIN and SYS_PTRACE let a container
+      override kernel-level access controls that would otherwise contain it,
+      effectively acting as a privileged utility program even when the
+      container itself isn't marked privileged. Containers must not add any
+      capability from the denylist set via
+      compliance.frameworks.iso27001.disallowedCapabilities in values.yaml.
+    compliance.framework/name: "ISO/IEC 27001:2022"
+    compliance.framework/control-id: "A.8.18"
+    compliance.framework/control-text: >-
+      Use of privileged utility programs: the use of utility programs that
+      might be capable of overriding system and application controls shall
+      be restricted and tightly controlled.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: no-dangerous-capabilities
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must not add Linux capabilities from the disallowed
+          list (ISO 27001 A.8.18). Disallowed:
+          {{ join ", " $fw.disallowedCapabilities }}.
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.securityContext.capabilities.add || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      {{- toYaml $fw.disallowedCapabilities | nindent 22 }}
+          - list: "request.object.spec.initContainers || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.securityContext.capabilities.add || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      {{- toYaml $fw.disallowedCapabilities | nindent 22 }}
+          - list: "request.object.spec.ephemeralContainers || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.securityContext.capabilities.add || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      {{- toYaml $fw.disallowedCapabilities | nindent 22 }}
+{{- end }}
