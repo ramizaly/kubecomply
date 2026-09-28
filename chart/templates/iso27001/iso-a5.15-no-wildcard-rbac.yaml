@@ -1,7 +1,11 @@
+{{- $fw := .Values.compliance.frameworks.iso27001 -}}
+{{- $name := "iso-a5.15-no-wildcard-rbac" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: iso-a5.15-no-wildcard-rbac
+  name: {{ $name }}
   annotations:
     policies.kyverno.io/title: "Disallow Wildcard RBAC Permissions"
     policies.kyverno.io/category: "ISO 27001"
@@ -17,7 +21,7 @@ metadata:
       Access control: rules to control physical and logical access to
       information and other associated assets shall be established and
       implemented based on business and information security requirements.
-    compliance.mode: "audit"
+    compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
@@ -39,10 +43,10 @@ spec:
                 - "system:*"
                 - "cluster-admin"
       validate:
-        failureAction: Audit
+        failureAction: {{ $mode | lower | title }}
         message: >-
-          RBAC rule {{ elementIndex }} in {{ request.object.kind }}
-          '{{ request.object.metadata.name }}' uses a wildcard ('*') in verbs or
+          RBAC rule {{ "{{" }} elementIndex {{ "}}" }} in {{ "{{" }} request.object.kind {{ "}}" }}
+          '{{ "{{" }} request.object.metadata.name {{ "}}" }}' uses a wildcard ('*') in verbs or
           resources (ISO 27001 A.5.15). List permissions explicitly.
         foreach:
           # Aggregated ClusterRoles may have no rules of their own.
@@ -50,11 +54,12 @@ spec:
             deny:
               conditions:
                 any:
-                  - key: "{{ element.verbs || `[]` }}"
+                  - key: "{{ "{{" }} element.verbs || `[]` {{ "}}" }}"
                     operator: AnyIn
                     value:
                       - "*"
-                  - key: "{{ element.resources || `[]` }}"
+                  - key: "{{ "{{" }} element.resources || `[]` {{ "}}" }}"
                     operator: AnyIn
                     value:
                       - "*"
+{{- end }}

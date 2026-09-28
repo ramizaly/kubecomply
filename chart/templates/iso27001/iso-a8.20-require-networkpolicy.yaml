@@ -1,7 +1,11 @@
+{{- $fw := .Values.compliance.frameworks.iso27001 -}}
+{{- $name := "iso-a8.20-require-networkpolicy" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: iso-a8.20-require-networkpolicy
+  name: {{ $name }}
   annotations:
     policies.kyverno.io/title: "Require a NetworkPolicy in Every Workload Namespace"
     policies.kyverno.io/category: "ISO 27001"
@@ -19,7 +23,7 @@ metadata:
       Networks security: networks and network devices shall be secured,
       managed and controlled to protect information in systems and
       applications.
-    compliance.mode: "audit"
+    compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
@@ -34,17 +38,18 @@ spec:
           apiCall:
             # request.object.metadata.namespace (not request.namespace) so the
             # rule also resolves during background scans.
-            urlPath: "/apis/networking.k8s.io/v1/namespaces/{{ request.object.metadata.namespace }}/networkpolicies"
+            urlPath: "/apis/networking.k8s.io/v1/namespaces/{{ "{{" }} request.object.metadata.namespace {{ "}}" }}/networkpolicies"
             jmesPath: "items | length(@)"
       validate:
-        failureAction: Audit
+        failureAction: {{ $mode | lower | title }}
         message: >-
-          Namespace '{{ request.object.metadata.namespace }}' has no
+          Namespace '{{ "{{" }} request.object.metadata.namespace {{ "}}" }}' has no
           NetworkPolicy (ISO 27001 A.8.20). Add at least a default-deny
           NetworkPolicy before deploying workloads.
         deny:
           conditions:
             any:
-              - key: "{{ netpolCount }}"
+              - key: "{{ "{{" }} netpolCount {{ "}}" }}"
                 operator: Equals
                 value: 0
+{{- end }}

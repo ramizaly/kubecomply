@@ -7,16 +7,44 @@ compliance:
     cis:
       enabled: false
       mode: audit
+      # Per-policy overrides, keyed by the ClusterPolicy's metadata.name
+      # (e.g. the file's basename under chart/templates/<framework>/).
+      #   policies:
+      #     iso-a8.2-no-privileged-nonroot:
+      #       enabled: true    # set false to skip this one policy entirely
+      #       mode: enforce    # overrides the framework-level mode above
       policies: {}
+
     iso27001:
       enabled: true
       mode: audit
       policies: {}
-        # iso-a8.2-no-privileged-nonroot: audit
+        # iso-a8.2-no-privileged-nonroot:
+        #   mode: enforce
+
+      # Registry allowlist enforced by iso-a5.23-approved-registries.
+      # Kyverno wildcard patterns, matched against the full image reference.
+      # CHANGE THIS to your organization's real approved registries before
+      # promoting that policy to enforce mode — the defaults below are a
+      # placeholder starting point, not a recommendation.
+      approvedRegistries:
+        - "registry.k8s.io/*"
+        - "ghcr.io/kyverno/*"
+        - "harbor.internal/*"
+
+      # Accepted values for the 'environment' label required by
+      # iso-a8.31-require-env-label.
+      environmentLabelValues:
+        - dev
+        - test
+        - staging
+        - prod
+
     soc2:
       enabled: false
       mode: audit
       policies: {}
+
     hipaa:
       enabled: false
       mode: audit

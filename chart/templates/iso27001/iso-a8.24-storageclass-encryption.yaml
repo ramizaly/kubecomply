@@ -1,7 +1,11 @@
+{{- $fw := .Values.compliance.frameworks.iso27001 -}}
+{{- $name := "iso-a8.24-storageclass-encryption" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: iso-a8.24-storageclass-encryption
+  name: {{ $name }}
   annotations:
     policies.kyverno.io/title: "Require StorageClasses to Declare Encryption at Rest"
     policies.kyverno.io/category: "ISO 27001"
@@ -10,8 +14,7 @@ metadata:
     policies.kyverno.io/description: >-
       Every StorageClass must provision encrypted volumes (encryption at
       rest; see iso-a8.24-ingress-tls for encryption in transit). Accepted
-      evidence:
-      AWS EBS CSI parameters.encrypted="true"; Azure Disk CSI
+      evidence: AWS EBS CSI parameters.encrypted="true"; Azure Disk CSI
       parameters.diskEncryptionSetID (customer-managed key); GCP PD CSI
       parameters.disk-encryption-kms-key (CMEK); or, for on-prem backends where
       encryption is enforced below Kubernetes (e.g. LUKS, Ceph encrypted OSDs),
@@ -22,7 +25,7 @@ metadata:
     compliance.framework/control-text: >-
       Use of cryptography: rules for the effective use of cryptography,
       including cryptographic key management, shall be defined and implemented.
-    compliance.mode: "audit"
+    compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
@@ -34,9 +37,9 @@ spec:
               kinds:
                 - StorageClass
       validate:
-        failureAction: Audit
+        failureAction: {{ $mode | lower | title }}
         message: >-
-          StorageClass '{{ request.object.metadata.name }}' does not declare
+          StorageClass '{{ "{{" }} request.object.metadata.name {{ "}}" }}' does not declare
           encryption at rest (ISO 27001 A.8.24). Set a provider encryption
           parameter, or annotate compliance.storage/encrypted-at-rest="true"
           once backend encryption has been verified.
@@ -50,3 +53,4 @@ spec:
           - metadata:
               annotations:
                 compliance.storage/encrypted-at-rest: "true"
+{{- end }}

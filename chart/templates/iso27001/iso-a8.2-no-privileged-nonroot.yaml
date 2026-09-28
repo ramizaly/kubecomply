@@ -1,7 +1,11 @@
+{{- $fw := .Values.compliance.frameworks.iso27001 -}}
+{{- $name := "iso-a8.2-no-privileged-nonroot" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: iso-a8.2-no-privileged-nonroot
+  name: {{ $name }}
   annotations:
     policies.kyverno.io/title: "Disallow Privileged Containers and Require Non-Root"
     policies.kyverno.io/category: "ISO 27001"
@@ -16,7 +20,7 @@ metadata:
     compliance.framework/control-text: >-
       Privileged access rights: the allocation and use of privileged access
       rights shall be restricted and managed.
-    compliance.mode: "audit"
+    compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
@@ -27,7 +31,7 @@ spec:
               kinds:
                 - Pod
       validate:
-        failureAction: Audit
+        failureAction: {{ $mode | lower | title }}
         message: >-
           Privileged containers are not allowed (ISO 27001 A.8.2).
           spec.containers[*], spec.initContainers[*] and
@@ -53,7 +57,7 @@ spec:
               kinds:
                 - Pod
       validate:
-        failureAction: Audit
+        failureAction: {{ $mode | lower | title }}
         message: >-
           Containers must run as non-root (ISO 27001 A.8.2). Set
           securityContext.runAsNonRoot=true at Pod level, or on every container.
@@ -82,3 +86,4 @@ spec:
               containers:
                 - securityContext:
                     runAsNonRoot: true
+{{- end }}

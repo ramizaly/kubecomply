@@ -1,7 +1,11 @@
+{{- $fw := .Values.compliance.frameworks.iso27001 -}}
+{{- $name := "iso-a8.16-require-probes" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: iso-a8.16-require-probes
+  name: {{ $name }}
   annotations:
     policies.kyverno.io/title: "Require Liveness and Readiness Probes"
     policies.kyverno.io/category: "ISO 27001"
@@ -17,7 +21,7 @@ metadata:
       Monitoring activities: networks, systems and applications shall be
       monitored for anomalous behaviour and appropriate actions taken to
       evaluate potential information security incidents.
-    compliance.mode: "audit"
+    compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
@@ -29,7 +33,7 @@ spec:
               kinds:
                 - Pod
       validate:
-        failureAction: Audit
+        failureAction: {{ $mode | lower | title }}
         message: >-
           Every container must define livenessProbe and readinessProbe
           (ISO 27001 A.8.16).
@@ -42,3 +46,4 @@ spec:
                   periodSeconds: ">0"
                 readinessProbe:
                   periodSeconds: ">0"
+{{- end }}
