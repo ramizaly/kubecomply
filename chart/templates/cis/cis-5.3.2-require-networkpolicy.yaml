@@ -1,0 +1,60 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.3.2-require-networkpolicy" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Ensure that All Namespaces Have Network Policies Defined"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Workloads must not run in a namespace with no NetworkPolicy, since
+      that leaves them with unrestricted pod-to-pod traffic. Validating the
+      Namespace object itself cannot work (a new namespace always has zero
+      policies), so this checks Pods (and, via autogen, their controllers)
+      and counts NetworkPolicies in the target namespace with an API call.
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.3.2"
+    compliance.framework/control-text: >-
+      Ensure that all Namespaces have Network Policies defined.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: namespace-has-networkpolicy
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      context:
+        - name: netpolCount
+          apiCall:
+            # request.object.metadata.namespace (not request.namespace) so the
+            # rule also resolves during background scans.
+            urlPath: "/apis/networking.k8s.io/v1/namespaces/{{ "{{" }} request.object.metadata.namespace {{ "}}" }}/networkpolicies"
+            jmesPath: "items | length(@)"
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Namespace '{{ "{{" }} request.object.metadata.namespace {{ "}}" }}' has no
+          NetworkPolicy (CIS 5.3.2). Add at least a default-deny
+          NetworkPolicy before deploying workloads.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} netpolCount {{ "}}" }}"
+                operator: Equals
+                value: 0
+{{- end }}

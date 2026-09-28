@@ -1,0 +1,70 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.2.6-no-root-containers" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Minimize the Admission of Root Containers"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A container running as UID 0 that escapes its container boundary
+      lands as root on the host. runAsNonRoot=true makes the kubelet refuse
+      to start a container whose effective UID is 0, set either at Pod
+      level or on every container.
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.2.6"
+    compliance.framework/control-text: >-
+      Minimize the admission of root containers.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must run as non-root (CIS 5.2.6). Set
+          securityContext.runAsNonRoot=true at Pod level, or on every container.
+        anyPattern:
+          # Option 1: set at Pod level; containers may not override it to false.
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+          # Option 2: set explicitly on every container.
+          - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+{{- end }}

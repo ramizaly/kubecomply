@@ -1,0 +1,51 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.2.12-no-host-ports" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Minimize the Admission of Containers Which Use HostPorts"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      A hostPort binds a container's port directly on the node, bypassing
+      the Service/NetworkPolicy layer and creating node-level port
+      contention between pods scheduled on the same node.
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.2.12"
+    compliance.framework/control-text: >-
+      Minimize the admission of containers which use HostPorts.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: disallow-host-ports
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must not set a container port's hostPort (CIS 5.2.12).
+        foreach:
+          - list: "request.object.spec.containers[].ports[] || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.hostPort {{ "}}" }}"
+                    operator: NotEquals
+                    value: null
+{{- end }}

@@ -1,0 +1,67 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.1.3-no-wildcard-rbac" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Minimize Wildcard Use in Roles and ClusterRoles"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Role, ClusterRole"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Wildcards in RBAC rules grant access to every current and future verb
+      or resource, violating least privilege. Roles and ClusterRoles must
+      list verbs and resources explicitly.
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.1.3"
+    compliance.framework/control-text: >-
+      Minimize wildcard use in Roles and ClusterRoles.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: no-wildcard-verbs-or-resources
+      # compliance.frameworks.cis.namespaces is intentionally not applied
+      # here: this rule mixes a namespaced kind (Role) with a cluster-scoped
+      # one (ClusterRole) — see the equivalent ISO 27001 policy for why a
+      # namespace filter can't cleanly cover both.
+      match:
+        any:
+          - resources:
+              kinds:
+                - Role
+                - ClusterRole
+      exclude:
+        any:
+          # Built-in roles managed by Kubernetes itself (cluster-admin is the
+          # intended break-glass role and legitimately uses '*').
+          - resources:
+              kinds:
+                - ClusterRole
+              names:
+                - "system:*"
+                - "cluster-admin"
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          A rule in {{ "{{" }} request.object.kind {{ "}}" }}
+          '{{ "{{" }} request.object.metadata.name {{ "}}" }}' uses a wildcard ('*') in verbs or
+          resources (CIS 5.1.3). List permissions explicitly.
+        foreach:
+          # Aggregated ClusterRoles may have no rules of their own.
+          - list: "request.object.rules || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.verbs || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+                  - key: "{{ "{{" }} element.resources || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+{{- end }}

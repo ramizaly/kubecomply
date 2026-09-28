@@ -24,7 +24,41 @@ Source of truth for control text is the `compliance.framework/control-text` anno
 
 ## CIS Kubernetes Benchmark
 
-_Not started._
+Only Section 5 ("Policies") is in scope. Sections 1–4 (control plane
+component flags, etcd config, kubelet config) audit how node/control-plane
+*processes* are configured on disk — Kyverno is an admission controller, it
+only ever sees Kubernetes API objects, so it structurally cannot check
+those. Use [kube-bench](https://github.com/aquasecurity/kube-bench) for
+sections 1–4. Skipped within Section 5: 5.1.1/5.1.2/5.1.4 (audits of
+*existing* RoleBindings, not a creation-time-preventable rule), 5.2.10
+(Windows HostProcess containers, not applicable off-Windows), 5.4.2/5.5.1
+(architecture/cluster-config recommendations, not object-level checks).
+
+Sub-item numbers (5.x.y) drift slightly across CIS Kubernetes Benchmark
+versions (v1.7 vs v1.8/1.9+); the numbers below follow the commonly-cited
+v1.8 ordering. If auditing against a specific pinned CIS version, verify
+numbers against that version's PDF — the control **text** and the check
+itself are what matter for compliance, not the exact section number.
+
+| Control | Policy file | Status | Rationale |
+|---|---|---|---|
+| 5.1.3 | `chart/templates/cis/cis-5.1.3-no-wildcard-rbac.yaml` | Drafted (`foreach`), untested | No `*` verbs/resources in Roles/ClusterRoles. Excludes `system:*` and `cluster-admin`. |
+| 5.1.5 | `chart/templates/cis/cis-5.1.5-no-default-serviceaccount.yaml` | Drafted, untested | Pods must not run as the implicit `default` ServiceAccount. |
+| 5.1.6 | `chart/templates/cis/cis-5.1.6-no-token-automount.yaml` | Drafted, untested | Pods must explicitly set `automountServiceAccountToken: false` unless the workload calls the Kubernetes API. |
+| 5.1.7 | `chart/templates/cis/cis-5.1.7-limit-bind-impersonate-escalate.yaml` | Drafted (`foreach`), untested | Roles/ClusterRoles must not grant `bind`, `impersonate`, or `escalate` — privilege-escalation primitives. |
+| 5.2.1 | `chart/templates/cis/cis-5.2.1-no-privileged-containers.yaml` | Drafted, untested | No privileged containers. |
+| 5.2.2 | `chart/templates/cis/cis-5.2.2-no-host-pid.yaml` | Drafted, untested | No `hostPID`. |
+| 5.2.3 | `chart/templates/cis/cis-5.2.3-no-host-ipc.yaml` | Drafted, untested | No `hostIPC`. |
+| 5.2.4 | `chart/templates/cis/cis-5.2.4-no-host-network.yaml` | Drafted, untested | No `hostNetwork`. |
+| 5.2.5 | `chart/templates/cis/cis-5.2.5-no-privilege-escalation.yaml` | Drafted, untested | Every container must explicitly set `allowPrivilegeEscalation: false` — it defaults to `true` when unset. |
+| 5.2.6 | `chart/templates/cis/cis-5.2.6-no-root-containers.yaml` | Drafted, untested | Require `runAsNonRoot: true` (Pod- or container-level). |
+| 5.2.7 | `chart/templates/cis/cis-5.2.7-drop-net-raw.yaml` | Drafted (`foreach`), untested | Every container must drop `NET_RAW` (or `ALL`) from `securityContext.capabilities.drop`. |
+| 5.2.8 | `chart/templates/cis/cis-5.2.8-no-added-capabilities.yaml` | Drafted (`foreach`), untested | No container may set `securityContext.capabilities.add`. |
+| 5.2.11 | `chart/templates/cis/cis-5.2.11-no-hostpath-volumes.yaml` | Drafted (`foreach`), untested | No `hostPath` volumes. |
+| 5.2.12 | `chart/templates/cis/cis-5.2.12-no-host-ports.yaml` | Drafted (`foreach`), untested | No container port may set `hostPort`. |
+| 5.3.2 | `chart/templates/cis/cis-5.3.2-require-networkpolicy.yaml` | Drafted, untested | Pods rejected/reported if their namespace has zero NetworkPolicies (counted via `apiCall`). Same mechanism as ISO A.8.20. |
+| 5.4.1 | `chart/templates/cis/cis-5.4.1-no-secrets-as-env-vars.yaml` | Drafted (`foreach`), untested | No container may reference a Secret via `env`/`envFrom` — must mount as a volume instead. |
+| 5.7.4 | `chart/templates/cis/cis-5.7.4-no-default-namespace.yaml` | Drafted, untested | Workloads must not be deployed to the `default` namespace. |
 
 ## SOC2
 

@@ -1,0 +1,48 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.1.6-no-token-automount" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Ensure Service Account Tokens Are Only Mounted Where Necessary"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Pods should only automount their ServiceAccount's API token when the
+      workload actually calls the Kubernetes API. Leaving it on by default
+      hands every Pod cluster-API credentials it likely never uses.
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.1.6"
+    compliance.framework/control-text: >-
+      Ensure that Service Account Tokens are only mounted where necessary.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-automount-token-disabled
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Pod '{{ "{{" }} request.object.metadata.name {{ "}}" }}' does not explicitly set
+          spec.automountServiceAccountToken=false (CIS 5.1.6). Disable
+          automount unless this workload calls the Kubernetes API.
+        pattern:
+          spec:
+            automountServiceAccountToken: false
+{{- end }}

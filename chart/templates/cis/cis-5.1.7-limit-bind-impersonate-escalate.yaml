@@ -1,0 +1,65 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.1.7-limit-bind-impersonate-escalate" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Limit Use of bind, impersonate and escalate RBAC Verbs"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Role, ClusterRole"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      The bind and escalate verbs let a principal grant itself permissions
+      it doesn't already hold on a Role/ClusterRole, and impersonate lets it
+      act as another user/group/ServiceAccount outright — all three are
+      privilege-escalation primitives that should never appear in an
+      ordinary Role or ClusterRole.
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.1.7"
+    compliance.framework/control-text: >-
+      Limit the use of bind, impersonate and escalate permissions.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: no-privilege-escalation-verbs
+      # compliance.frameworks.cis.namespaces is intentionally not applied
+      # here: this rule mixes a namespaced kind (Role) with a cluster-scoped
+      # one (ClusterRole).
+      match:
+        any:
+          - resources:
+              kinds:
+                - Role
+                - ClusterRole
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - ClusterRole
+              names:
+                - "system:*"
+                - "cluster-admin"
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          A rule in {{ "{{" }} request.object.kind {{ "}}" }}
+          '{{ "{{" }} request.object.metadata.name {{ "}}" }}' grants bind,
+          impersonate, or escalate (CIS 5.1.7). These verbs let a principal
+          expand its own permissions and should not appear in ordinary
+          Roles/ClusterRoles.
+        foreach:
+          - list: "request.object.rules || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.verbs || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      - bind
+                      - impersonate
+                      - escalate
+{{- end }}

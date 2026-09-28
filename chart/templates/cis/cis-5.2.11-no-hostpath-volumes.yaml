@@ -1,0 +1,51 @@
+{{- $fw := .Values.compliance.frameworks.cis -}}
+{{- $name := "cis-5.2.11-no-hostpath-volumes" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Minimize the Admission of HostPath Volumes"
+    policies.kyverno.io/category: "CIS Kubernetes Benchmark"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A hostPath volume mounts a path from the node's filesystem straight
+      into the container, breaking the isolation between workloads and the
+      underlying node (and between workloads sharing that node).
+    compliance.framework/name: "CIS Kubernetes Benchmark"
+    compliance.framework/control-id: "5.2.11"
+    compliance.framework/control-text: >-
+      Minimize the admission of HostPath volumes.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: disallow-hostpath-volumes
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Pods must not define a hostPath volume (CIS 5.2.11).
+        foreach:
+          - list: "request.object.spec.volumes || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.hostPath {{ "}}" }}"
+                    operator: NotEquals
+                    value: null
+{{- end }}
