@@ -1,0 +1,17 @@
+apiVersion: v2
+name: k8s-compliance-controller
+description: Admission-time compliance enforcement (CIS / ISO 27001 / SOC2 / HIPAA) via Kyverno, with Policy Reporter UI as the dashboard.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+# Pin exact versions after checking `helm search repo kyverno` / `helm search repo policy-reporter`.
+dependencies:
+  - name: kyverno
+    version: "^3.0.0"
+    repository: https://kyverno.github.io/kyverno/
+    condition: kyverno.enabled
+  - name: policy-reporter
+    version: "^3.0.0"
+    repository: https://kyverno.github.io/policy-reporter
+    condition: policy-reporter.enabled

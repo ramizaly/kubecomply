@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: iso-a8.16-require-probes
+  annotations:
+    policies.kyverno.io/title: "Require Liveness and Readiness Probes"
+    policies.kyverno.io/category: "ISO 27001"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Liveness and readiness probes give the platform a continuous health
+      signal for each container, so failures are detected and acted on
+      automatically. Every application container must define both.
+    compliance.framework/name: "ISO/IEC 27001:2022"
+    compliance.framework/control-id: "A.8.16"
+    compliance.framework/control-text: >-
+      Monitoring activities: networks, systems and applications shall be
+      monitored for anomalous behaviour and appropriate actions taken to
+      evaluate potential information security incidents.
+    compliance.mode: "audit"
+spec:
+  background: true
+  rules:
+    # Init and ephemeral containers are excluded: probes do not apply to them.
+    - name: require-liveness-and-readiness
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        message: >-
+          Every container must define livenessProbe and readinessProbe
+          (ISO 27001 A.8.16).
+        pattern:
+          spec:
+            containers:
+              # periodSeconds is defaulted by the API server whenever a probe
+              # exists, so this matches any configured probe.
+              - livenessProbe:
+                  periodSeconds: ">0"
+                readinessProbe:
+                  periodSeconds: ">0"

@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: iso-a5.23-approved-registries
+  annotations:
+    policies.kyverno.io/title: "Restrict Images to Approved Registries"
+    policies.kyverno.io/category: "ISO 27001"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Container images are an externally sourced service. Only images from
+      registries the organisation has approved (and scans) may run. Images
+      without an explicit registry resolve to docker.io and are rejected.
+    compliance.framework/name: "ISO/IEC 27001:2022"
+    compliance.framework/control-id: "A.5.23"
+    compliance.framework/control-text: >-
+      Information security for use of cloud services: processes for
+      acquisition, use, management and exit from cloud services shall be
+      established in accordance with the organization's information security
+      requirements.
+    compliance.mode: "audit"
+spec:
+  background: true
+  rules:
+    # TODO: replace the placeholder registries below with the real approved list.
+    - name: approved-registries-only
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        message: >-
+          Image is not from an approved registry (ISO 27001 A.5.23).
+          Approved: registry.k8s.io, ghcr.io/kyverno, harbor.internal.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "registry.k8s.io/* | ghcr.io/kyverno/* | harbor.internal/*"
+            =(initContainers):
+              - image: "registry.k8s.io/* | ghcr.io/kyverno/* | harbor.internal/*"
+            containers:
+              - image: "registry.k8s.io/* | ghcr.io/kyverno/* | harbor.internal/*"

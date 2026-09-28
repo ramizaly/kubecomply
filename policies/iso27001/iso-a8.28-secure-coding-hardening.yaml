@@ -1,0 +1,63 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: iso-a8.28-secure-coding-hardening
+  annotations:
+    policies.kyverno.io/title: "Require Read-Only Root Filesystem and Disallow Host PID"
+    policies.kyverno.io/category: "ISO 27001"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      A writable container root filesystem lets a compromised process persist
+      or tamper with its own runtime files, and sharing the host's PID
+      namespace lets a container see and signal processes outside itself.
+      Containers must set readOnlyRootFilesystem=true, and Pods must not set
+      hostPID=true.
+    compliance.framework/name: "ISO/IEC 27001:2022"
+    compliance.framework/control-id: "A.8.28"
+    compliance.framework/control-text: >-
+      Secure coding: secure coding principles shall be applied to software
+      development.
+    compliance.mode: "audit"
+spec:
+  background: true
+  rules:
+    - name: require-readonly-rootfs
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        message: >-
+          Containers must set securityContext.readOnlyRootFilesystem=true
+          (ISO 27001 A.8.28). spec.containers[*],
+          spec.initContainers[*] and spec.ephemeralContainers[*] must set it
+          explicitly.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - securityContext:
+                  readOnlyRootFilesystem: true
+            =(initContainers):
+              - securityContext:
+                  readOnlyRootFilesystem: true
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true
+
+    - name: disallow-host-pid
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        message: >-
+          Pods must not share the host's PID namespace (ISO 27001 A.8.28).
+          spec.hostPID must be unset or false.
+        pattern:
+          spec:
+            =(hostPID): "false"

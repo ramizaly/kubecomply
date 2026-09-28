@@ -1,0 +1,39 @@
+# Enforcement mode per framework, with optional per-policy overrides.
+# Allowed values: audit | enforce
+# Everything starts in audit. Promotion to enforce is a deliberate decision,
+# recorded in docs/enforcement-promotion-log.md.
+compliance:
+  frameworks:
+    cis:
+      enabled: false
+      mode: audit
+      policies: {}
+    iso27001:
+      enabled: true
+      mode: audit
+      policies: {}
+        # iso-a8.2-no-privileged-nonroot: audit
+    soc2:
+      enabled: false
+      mode: audit
+      policies: {}
+    hipaa:
+      enabled: false
+      mode: audit
+      policies: {}
+
+# --- Subchart values ---------------------------------------------------------
+
+kyverno:
+  enabled: true
+  # Standalone / non-HA on purpose (lab cluster). replicaCount=3 skipped.
+  # config:
+  #   backgroundScanInterval: 1h   # lower during testing for faster feedback
+
+policy-reporter:
+  enabled: true
+  ui:
+    enabled: true
+  plugin:
+    kyverno:
+      enabled: true

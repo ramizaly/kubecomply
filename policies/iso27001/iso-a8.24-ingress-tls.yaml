@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: iso-a8.24-ingress-tls
+  annotations:
+    policies.kyverno.io/title: "Require TLS on Ingress Resources"
+    policies.kyverno.io/category: "ISO 27001"
+    policies.kyverno.io/subject: "Ingress"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Covers encryption in transit, complementing
+      iso-a8.24-encrypted-storage.yaml and
+      iso-a8.24-storageclass-encryption.yaml, which cover encryption at
+      rest. An Ingress with no spec.tls entries serves plaintext HTTP.
+    compliance.framework/name: "ISO/IEC 27001:2022"
+    compliance.framework/control-id: "A.8.24"
+    compliance.framework/control-text: >-
+      Use of cryptography: rules for the effective use of cryptography,
+      including cryptographic key management, shall be defined and implemented.
+    compliance.mode: "audit"
+spec:
+  background: true
+  rules:
+    - name: ingress-requires-tls
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+      validate:
+        failureAction: Audit
+        message: >-
+          Ingress '{{ request.object.metadata.name }}' has no spec.tls
+          entries (ISO 27001 A.8.24). Add a tls entry with a secretName
+          referencing a valid TLS Secret.
+        deny:
+          conditions:
+            any:
+              - key: "{{ length(request.object.spec.tls || `[]`) }}"
+                operator: Equals
+                value: 0

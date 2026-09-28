@@ -1,0 +1,38 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: iso-a8.31-require-env-label
+  annotations:
+    policies.kyverno.io/title: "Require an Environment Label"
+    policies.kyverno.io/category: "ISO 27001"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      Every workload must declare which environment it belongs to, so that
+      development, test and production workloads can be told apart and kept
+      separate by scheduling, network and access rules.
+    compliance.framework/name: "ISO/IEC 27001:2022"
+    compliance.framework/control-id: "A.8.31"
+    compliance.framework/control-text: >-
+      Separation of development, test and production environments:
+      development, testing and production environments shall be separated
+      and secured.
+    compliance.mode: "audit"
+spec:
+  background: true
+  rules:
+    - name: require-environment-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Audit
+        message: >-
+          The label 'environment' is required and must be one of
+          dev, test, staging, prod (ISO 27001 A.8.31).
+        pattern:
+          metadata:
+            labels:
+              environment: "dev | test | staging | prod"

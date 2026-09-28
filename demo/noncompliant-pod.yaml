@@ -1,0 +1,15 @@
+# Deliberately non-compliant Pod for the demo loop.
+# Violates (ISO 27001): A.8.2 privileged/root, A.8.16 no probes,
+# A.5.23 unapproved registry, A.8.31 no environment label, A.8.6 no resources.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: noncompliant-pod
+  namespace: default
+spec:
+  containers:
+    - name: app
+      image: docker.io/library/nginx:latest
+      securityContext:
+        privileged: true
+        runAsUser: 0
