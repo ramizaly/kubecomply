@@ -11,7 +11,6 @@ Every policy starts in **Audit** (report only). You promote policies to **Enforc
 | ISO/IEC 27001:2022 | 14 (11 controls) | The Annex A controls that can be checked on Kubernetes objects | enabled, Audit |
 | CIS Kubernetes Benchmark v2.0.x | 17 | Section 5 ("Policies") only | disabled |
 | SOC 2 (AICPA TSC 2017, rev. 2022) | 25 (10 criteria) | Criteria that can be checked at admission time | disabled |
-| HIPAA | not started | | |
 
 Every policy carries annotations linking it back to its framework, control ID and control text. [docs/control-mappings.md](docs/control-mappings.md) is the human-readable index, including why each unmapped control can't be checked at admission time.
 
@@ -71,13 +70,4 @@ demo/                      a deliberately non-compliant Pod for the demo loop
 - Most compliance controls are organizational or procedural and have no Kubernetes mapping. This project covers the subset that does.
 - Policies support a compliance program. They are not a compliance certification.
 
-## Roadmap
 
-An AI layer is planned as Phase 2, with a hard boundary: **AI never changes a policy's enforcement mode and never modifies a live cluster resource.** Those actions stay deterministic and human-gated.
-
-1. Draft a `ClusterPolicy` from raw control text, with a human reviewing before commit.
-2. Draft remediation as a pull request against the source repo. The agent never writes to the cluster.
-
-## License
-
-Not yet specified. Add one before publishing.
