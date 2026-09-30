@@ -1,5 +1,5 @@
 {{- $fw := .Values.compliance.frameworks.cis -}}
-{{- $name := "cis-5.2.4-no-host-network" -}}
+{{- $name := "cis-5.6.4-no-default-namespace" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 {{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
@@ -8,24 +8,24 @@ kind: ClusterPolicy
 metadata:
   name: {{ $name }}
   annotations:
-    policies.kyverno.io/title: "Minimize the Admission of Containers Wishing to Share the Host Network Namespace"
+    policies.kyverno.io/title: "The default Namespace Should Not Be Used"
     policies.kyverno.io/category: "CIS Kubernetes Benchmark"
     policies.kyverno.io/subject: "Pod"
-    policies.kyverno.io/severity: high
+    policies.kyverno.io/severity: low
     policies.kyverno.io/description: >-
-      hostNetwork lets a container bind the node's network interfaces
-      directly, bypassing whatever network segmentation NetworkPolicies are
-      enforcing.
+      Workloads left in the 'default' namespace can't be isolated by
+      namespace-scoped RBAC, NetworkPolicy, or ResourceQuota from anything
+      else that also lands there. Every workload should be deployed to a
+      purpose-created namespace.
     compliance.framework/name: "CIS Kubernetes Benchmark"
-    compliance.framework/control-id: "5.2.4"
+    compliance.framework/control-id: "5.6.4"
     compliance.framework/control-text: >-
-      Minimize the admission of containers wishing to share the host network
-      namespace.
+      The default namespace should not be used.
     compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
-    - name: disallow-host-network
+    - name: disallow-default-namespace
       match:
         any:
           - resources:
@@ -40,9 +40,12 @@ spec:
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
-          Pods must not share the host's network namespace (CIS 5.2.4).
-          spec.hostNetwork must be unset or false.
-        pattern:
-          spec:
-            =(hostNetwork): "false"
+          Workloads must not be deployed to the 'default' namespace
+          (CIS 5.6.4). Create a purpose-specific namespace instead.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.metadata.namespace {{ "}}" }}"
+                operator: Equals
+                value: "default"
 {{- end }}

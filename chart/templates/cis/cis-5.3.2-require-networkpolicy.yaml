@@ -21,7 +21,7 @@ metadata:
     compliance.framework/name: "CIS Kubernetes Benchmark"
     compliance.framework/control-id: "5.3.2"
     compliance.framework/control-text: >-
-      Ensure that all Namespaces have Network Policies defined.
+      Ensure that all Namespaces have NetworkPolicies defined.
     compliance.mode: "{{ $mode }}"
 spec:
   background: true

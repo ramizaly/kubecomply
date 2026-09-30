@@ -1,5 +1,5 @@
 {{- $fw := .Values.compliance.frameworks.cis -}}
-{{- $name := "cis-5.2.3-no-host-ipc" -}}
+{{- $name := "cis-5.2.3-no-host-pid" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 {{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
@@ -8,24 +8,23 @@ kind: ClusterPolicy
 metadata:
   name: {{ $name }}
   annotations:
-    policies.kyverno.io/title: "Minimize the Admission of Containers Wishing to Share the Host IPC Namespace"
+    policies.kyverno.io/title: "Minimize the Admission of Containers Wishing to Share the Host Process ID Namespace"
     policies.kyverno.io/category: "CIS Kubernetes Benchmark"
     policies.kyverno.io/subject: "Pod"
     policies.kyverno.io/severity: high
     policies.kyverno.io/description: >-
-      hostIPC lets a container share the host's inter-process communication
-      namespace, exposing shared memory and semaphores used by host
-      processes.
+      hostPID lets a container see and signal every process on the host
+      node, not just its own, breaking process-level isolation.
     compliance.framework/name: "CIS Kubernetes Benchmark"
     compliance.framework/control-id: "5.2.3"
     compliance.framework/control-text: >-
-      Minimize the admission of containers wishing to share the host IPC
-      namespace.
+      Minimize the admission of containers wishing to share the host process
+      ID namespace.
     compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
-    - name: disallow-host-ipc
+    - name: disallow-host-pid
       match:
         any:
           - resources:
@@ -40,9 +39,9 @@ spec:
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
-          Pods must not share the host's IPC namespace (CIS 5.2.3).
-          spec.hostIPC must be unset or false.
+          Pods must not share the host's PID namespace (CIS 5.2.3).
+          spec.hostPID must be unset or false.
         pattern:
           spec:
-            =(hostIPC): "false"
+            =(hostPID): "false"
 {{- end }}

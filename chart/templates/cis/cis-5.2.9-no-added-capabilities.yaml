@@ -1,5 +1,5 @@
 {{- $fw := .Values.compliance.frameworks.cis -}}
-{{- $name := "cis-5.2.8-no-added-capabilities" -}}
+{{- $name := "cis-5.2.9-no-added-capabilities" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 {{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
@@ -18,9 +18,9 @@ metadata:
       capability beyond the default — a workload that genuinely needs one
       should get a documented, reviewed exception, not a standing grant.
     compliance.framework/name: "CIS Kubernetes Benchmark"
-    compliance.framework/control-id: "5.2.8"
+    compliance.framework/control-id: "5.2.9"
     compliance.framework/control-text: >-
-      Minimize the admission of containers with added capabilities.
+      Minimize the admission of containers with capabilities assigned.
     compliance.mode: "{{ $mode }}"
 spec:
   background: true
@@ -41,7 +41,7 @@ spec:
         failureAction: {{ $mode | lower | title }}
         message: >-
           Containers must not set securityContext.capabilities.add
-          (CIS 5.2.8). Every capability beyond the container runtime's
+          (CIS 5.2.9). Every capability beyond the container runtime's
           default set must be dropped, not added to.
         foreach:
           - list: "request.object.spec.containers"

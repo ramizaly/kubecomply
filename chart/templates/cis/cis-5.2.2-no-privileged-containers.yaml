@@ -1,5 +1,5 @@
 {{- $fw := .Values.compliance.frameworks.cis -}}
-{{- $name := "cis-5.2.5-no-privilege-escalation" -}}
+{{- $name := "cis-5.2.2-no-privileged-containers" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 {{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
@@ -8,23 +8,23 @@ kind: ClusterPolicy
 metadata:
   name: {{ $name }}
   annotations:
-    policies.kyverno.io/title: "Minimize the Admission of Containers with allowPrivilegeEscalation"
+    policies.kyverno.io/title: "Minimize the Admission of Privileged Containers"
     policies.kyverno.io/category: "CIS Kubernetes Benchmark"
     policies.kyverno.io/subject: "Pod"
     policies.kyverno.io/severity: high
     policies.kyverno.io/description: >-
-      allowPrivilegeEscalation defaults to true when unset, letting a
-      process gain more privileges than its parent (e.g. via a setuid
-      binary). It must be explicitly set to false on every container.
+      A privileged container has effectively all the capabilities of the
+      host machine, removing most of the isolation a container is supposed
+      to provide.
     compliance.framework/name: "CIS Kubernetes Benchmark"
-    compliance.framework/control-id: "5.2.5"
+    compliance.framework/control-id: "5.2.2"
     compliance.framework/control-text: >-
-      Minimize the admission of containers with allowPrivilegeEscalation.
+      Minimize the admission of privileged containers.
     compliance.mode: "{{ $mode }}"
 spec:
   background: true
   rules:
-    - name: require-no-privilege-escalation
+    - name: disallow-privileged-containers
       match:
         any:
           - resources:
@@ -39,18 +39,18 @@ spec:
       validate:
         failureAction: {{ $mode | lower | title }}
         message: >-
-          Containers must explicitly set
-          securityContext.allowPrivilegeEscalation=false (CIS 5.2.5) —
-          it defaults to true when unset.
+          Privileged containers are not allowed (CIS 5.2.2).
+          spec.containers[*], spec.initContainers[*] and
+          spec.ephemeralContainers[*] securityContext.privileged must be unset or false.
         pattern:
           spec:
             =(ephemeralContainers):
-              - securityContext:
-                  allowPrivilegeEscalation: false
+              - =(securityContext):
+                  =(privileged): "false"
             =(initContainers):
-              - securityContext:
-                  allowPrivilegeEscalation: false
+              - =(securityContext):
+                  =(privileged): "false"
             containers:
-              - securityContext:
-                  allowPrivilegeEscalation: false
+              - =(securityContext):
+                  =(privileged): "false"
 {{- end }}

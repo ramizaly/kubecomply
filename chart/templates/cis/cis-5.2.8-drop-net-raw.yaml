@@ -1,5 +1,5 @@
 {{- $fw := .Values.compliance.frameworks.cis -}}
-{{- $name := "cis-5.2.7-drop-net-raw" -}}
+{{- $name := "cis-5.2.8-drop-net-raw" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 {{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
@@ -19,7 +19,7 @@ metadata:
       capability set unless explicitly dropped, so every container must
       drop it (or drop ALL and add back only what it needs).
     compliance.framework/name: "CIS Kubernetes Benchmark"
-    compliance.framework/control-id: "5.2.7"
+    compliance.framework/control-id: "5.2.8"
     compliance.framework/control-text: >-
       Minimize the admission of containers with the NET_RAW capability.
     compliance.mode: "{{ $mode }}"
@@ -42,7 +42,7 @@ spec:
         failureAction: {{ $mode | lower | title }}
         message: >-
           Every container must drop the NET_RAW capability, or drop ALL
-          (CIS 5.2.7): securityContext.capabilities.drop must include
+          (CIS 5.2.8): securityContext.capabilities.drop must include
           "NET_RAW" or "ALL".
         foreach:
           - list: "request.object.spec.containers"

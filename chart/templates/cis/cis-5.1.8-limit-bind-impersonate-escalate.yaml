@@ -1,5 +1,5 @@
 {{- $fw := .Values.compliance.frameworks.cis -}}
-{{- $name := "cis-5.1.7-limit-bind-impersonate-escalate" -}}
+{{- $name := "cis-5.1.8-limit-bind-impersonate-escalate" -}}
 {{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
 {{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
 apiVersion: kyverno.io/v1
@@ -18,9 +18,10 @@ metadata:
       privilege-escalation primitives that should never appear in an
       ordinary Role or ClusterRole.
     compliance.framework/name: "CIS Kubernetes Benchmark"
-    compliance.framework/control-id: "5.1.7"
+    compliance.framework/control-id: "5.1.8"
     compliance.framework/control-text: >-
-      Limit the use of bind, impersonate and escalate permissions.
+      Limit use of the Bind, Impersonate and Escalate permissions in the
+      Kubernetes cluster.
     compliance.mode: "{{ $mode }}"
 spec:
   background: true
@@ -48,7 +49,7 @@ spec:
         message: >-
           A rule in {{ "{{" }} request.object.kind {{ "}}" }}
           '{{ "{{" }} request.object.metadata.name {{ "}}" }}' grants bind,
-          impersonate, or escalate (CIS 5.1.7). These verbs let a principal
+          impersonate, or escalate (CIS 5.1.8). These verbs let a principal
           expand its own permissions and should not appear in ordinary
           Roles/ClusterRoles.
         foreach:
