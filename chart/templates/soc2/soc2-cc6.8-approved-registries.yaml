@@ -1,0 +1,63 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.8-approved-registries" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- if not $fw.approvedRegistries }}
+{{- fail "compliance.frameworks.soc2.approvedRegistries must list at least one registry pattern when this policy is enabled" }}
+{{- end }}
+{{- $registries := join " | " $fw.approvedRegistries }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Images to Approved Registries"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Running a container is installing software. CC6.8 requires software
+      installation to be restricted and software from outside the entity to
+      be scanned before use. Only images from registries the organisation
+      has approved (and scans) may run; images without an explicit registry
+      resolve to docker.io and are rejected. The allowlist is set via
+      compliance.frameworks.soc2.approvedRegistries in values.yaml.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.8"
+    compliance.framework/control-text: >-
+      The entity implements controls to prevent or detect and act upon the
+      introduction of unauthorized or malicious software to meet the
+      entity's objectives. (Points of focus: Restricts Application and
+      Software Installation; Scans Information Assets from Outside the Entity
+      for Malware and Other Unauthorized Software.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: approved-registries-only
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Image is not from an approved registry (SOC 2 CC6.8).
+          Approved: {{ $registries }}.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "{{ $registries }}"
+            =(initContainers):
+              - image: "{{ $registries }}"
+            containers:
+              - image: "{{ $registries }}"
+{{- end }}

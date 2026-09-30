@@ -1,0 +1,61 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-a1.2-require-replicas" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $minReplicas := int ($fw.minReplicas | default 2) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require Redundant Replicas for Long-Running Workloads"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Deployment, StatefulSet"
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      Availability category (optional in a SOC 2 report — disable if the
+      report covers Security only). A single-replica workload has no
+      recovery infrastructure: a node drain, eviction or crash is an outage
+      until the replacement Pod starts. Deployments and StatefulSets must
+      run at least compliance.frameworks.soc2.minReplicas replicas (default
+      2). Scope this to production namespaces via the per-policy
+      `namespaces` override; it will be noisy on a single-node lab cluster.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "A1.2"
+    compliance.framework/control-text: >-
+      The entity authorizes, designs, develops or acquires, implements,
+      operates, approves, maintains, and monitors environmental protections,
+      software, data backup processes, and recovery infrastructure to meet
+      its objectives.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-min-replicas
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          {{ "{{" }} request.object.kind {{ "}}" }} '{{ "{{" }} request.object.metadata.name {{ "}}" }}'
+          runs fewer than {{ $minReplicas }} replicas (SOC 2 A1.2). Run
+          redundant replicas so a single Pod or node failure is not an outage.
+        deny:
+          conditions:
+            any:
+              # spec.replicas is defaulted to 1 by the API server when unset.
+              - key: "{{ "{{" }} request.object.spec.replicas || `1` {{ "}}" }}"
+                operator: LessThan
+                value: {{ $minReplicas }}
+{{- end }}

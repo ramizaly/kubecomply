@@ -1,0 +1,72 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.3-restrict-cluster-admin-bindings" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Bindings to the cluster-admin Role"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "RoleBinding, ClusterRoleBinding"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      cluster-admin is unrestricted superuser access. Every new binding to it
+      is a grant of full administrative authority and must be an explicit,
+      reviewed exception, not something any namespace admin can create.
+      Bindings named in compliance.frameworks.soc2.allowedClusterAdminBindings
+      (e.g. a break-glass group binding) are allowed, as are Kubernetes'
+      built-in system:* bindings and kubeadm's kubeadm:* bindings.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.3"
+    compliance.framework/control-text: >-
+      The entity authorizes, modifies, or removes access to data, software,
+      functions, and other protected information assets based on roles,
+      responsibilities, or the system design and changes, giving
+      consideration to the concepts of least privilege and segregation of
+      duties, to meet the entity's objectives.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: no-unapproved-cluster-admin-bindings
+      # compliance.frameworks.soc2.namespaces is intentionally not applied
+      # here: this rule mixes a namespaced kind (RoleBinding) with a
+      # cluster-scoped one (ClusterRoleBinding).
+      match:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+                - ClusterRoleBinding
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+                - ClusterRoleBinding
+              names:
+                - "system:*"
+                - "kubeadm:*"
+                {{- range $fw.allowedClusterAdminBindings }}
+                - {{ . | quote }}
+                {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          {{ "{{" }} request.object.kind {{ "}}" }} '{{ "{{" }} request.object.metadata.name {{ "}}" }}'
+          binds the cluster-admin ClusterRole (SOC 2 CC6.3). Bind a scoped
+          role instead, or add this binding to
+          compliance.frameworks.soc2.allowedClusterAdminBindings as a
+          reviewed exception.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} request.object.roleRef.kind {{ "}}" }}"
+                operator: Equals
+                value: ClusterRole
+              - key: "{{ "{{" }} request.object.roleRef.name {{ "}}" }}"
+                operator: Equals
+                value: cluster-admin
+{{- end }}

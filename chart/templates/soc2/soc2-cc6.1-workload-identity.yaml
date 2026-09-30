@@ -1,0 +1,85 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-workload-identity" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require a Dedicated ServiceAccount and No Unneeded Token Automount"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      CC6.1 requires software, not just people, to be identified before
+      accessing information assets, and its credentials to be issued only
+      when needed. The implicit 'default' ServiceAccount is a shared,
+      unregistered identity for every Pod in a namespace that doesn't name
+      one; an automounted token is a credential the workload may never need.
+      Pods must name a dedicated ServiceAccount and set
+      automountServiceAccountToken=false unless they call the Kubernetes API.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Points of focus:
+      Identifies and Authenticates Users — persons, infrastructure, and
+      software are identified and authenticated prior to accessing
+      information assets; Manages Credentials for Infrastructure and
+      Software.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: disallow-default-serviceaccount
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Pod '{{ "{{" }} request.object.metadata.name {{ "}}" }}' uses the implicit
+          'default' ServiceAccount (SOC 2 CC6.1). Set spec.serviceAccountName
+          to a dedicated, least-privilege ServiceAccount.
+        deny:
+          conditions:
+            any:
+              - key: >-
+                  {{ "{{" }} request.object.spec.serviceAccountName ||
+                  request.object.spec.serviceAccount || 'default' {{ "}}" }}
+                operator: Equals
+                value: "default"
+
+    - name: require-automount-token-disabled
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Pod '{{ "{{" }} request.object.metadata.name {{ "}}" }}' does not explicitly set
+          spec.automountServiceAccountToken=false (SOC 2 CC6.1). Disable
+          automount unless this workload calls the Kubernetes API.
+        pattern:
+          spec:
+            automountServiceAccountToken: false
+{{- end }}

@@ -1,0 +1,139 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-restrict-privileged-containers" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Privileged Containers, Privilege Escalation and Root"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A privileged container, a process allowed to escalate privileges, or a
+      container running as UID 0 each give a workload administrative
+      authority over the node it runs on — the "administrative authorities"
+      CC6.1 requires to be restricted by access-control rule sets. Containers
+      must run unprivileged, with allowPrivilegeEscalation=false, and with
+      runAsNonRoot=true.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Point of focus:
+      Restricts Logical Access — logical access to information assets,
+      including hardware, data, software, administrative authorities [...] is
+      restricted through the use of access control software and rule sets.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: disallow-privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Privileged containers are not allowed (SOC 2 CC6.1).
+          securityContext.privileged must be unset or false on every
+          container, initContainer and ephemeralContainer.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            =(initContainers):
+              - =(securityContext):
+                  =(privileged): "false"
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+
+    - name: require-no-privilege-escalation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must explicitly set
+          securityContext.allowPrivilegeEscalation=false (SOC 2 CC6.1) — it
+          defaults to true when unset.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            =(initContainers):
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+
+    # runAsNonRoot=true makes the kubelet refuse to start a container whose
+    # effective UID is 0, so an explicit runAsUser: 0 also fails at runtime.
+    - name: require-run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must run as non-root (SOC 2 CC6.1). Set
+          securityContext.runAsNonRoot=true at Pod level, or on every container.
+        anyPattern:
+          # Option 1: set at Pod level; containers may not override it to false.
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              =(initContainers):
+                - =(securityContext):
+                    =(runAsNonRoot): true
+              containers:
+                - =(securityContext):
+                    =(runAsNonRoot): true
+          # Option 2: set explicitly on every container.
+          - spec:
+              =(ephemeralContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              =(initContainers):
+                - securityContext:
+                    runAsNonRoot: true
+              containers:
+                - securityContext:
+                    runAsNonRoot: true
+{{- end }}

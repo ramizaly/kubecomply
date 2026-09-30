@@ -1,0 +1,61 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-require-ownership-labels" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- if not $fw.requiredLabels }}
+{{- fail "compliance.frameworks.soc2.requiredLabels must list at least one label key when this policy is enabled" }}
+{{- end }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require Asset Inventory / Ownership Labels"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      CC6.1's first point of focus is an inventory of information assets.
+      In a cluster, an unlabeled workload is an unowned asset: nobody can say
+      what it is, who is accountable for it, or whether it should exist.
+      Every workload must carry the labels listed in
+      compliance.frameworks.soc2.requiredLabels (default: the app name and
+      an owning team), which makes the PolicyReport itself an inventory and
+      lets unknown components (CC7.1) be spotted by their missing owner.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Point of focus:
+      Identifies and Manages the Inventory of Information Assets — the entity
+      identifies, inventories, classifies, and manages information assets.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-ownership-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Workloads must carry the labels {{ join ", " $fw.requiredLabels }}
+          with non-empty values (SOC 2 CC6.1 asset inventory).
+        pattern:
+          metadata:
+            labels:
+              {{- range $fw.requiredLabels }}
+              {{ . | quote }}: "?*"
+              {{- end }}
+{{- end }}

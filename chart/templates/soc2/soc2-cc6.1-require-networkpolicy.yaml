@@ -1,0 +1,67 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-require-networkpolicy" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require a NetworkPolicy in Every Workload Namespace"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Kubernetes' default is a flat network: every Pod can reach every other
+      Pod. CC6.1 calls for network segmentation that isolates unrelated parts
+      of the system. Workloads must not run in a namespace with zero
+      NetworkPolicies. Validating the Namespace itself cannot work (a new
+      namespace always has zero policies), so this checks Pods (and, via
+      autogen, their controllers) and counts NetworkPolicies in the target
+      namespace with an API call. Same mechanism as iso-a8.20 / cis-5.3.2.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Point of focus:
+      Considers Network Segmentation — network segmentation permits unrelated
+      portions of the entity's information system to be isolated from each
+      other.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: namespace-has-networkpolicy
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      context:
+        - name: netpolCount
+          apiCall:
+            # request.object.metadata.namespace (not request.namespace) so the
+            # rule also resolves during background scans.
+            urlPath: "/apis/networking.k8s.io/v1/namespaces/{{ "{{" }} request.object.metadata.namespace {{ "}}" }}/networkpolicies"
+            jmesPath: "items | length(@)"
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Namespace '{{ "{{" }} request.object.metadata.namespace {{ "}}" }}' has no
+          NetworkPolicy (SOC 2 CC6.1). Add at least a default-deny
+          NetworkPolicy before deploying workloads.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} netpolCount {{ "}}" }}"
+                operator: Equals
+                value: 0
+{{- end }}

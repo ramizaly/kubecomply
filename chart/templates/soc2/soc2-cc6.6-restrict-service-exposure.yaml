@@ -1,0 +1,91 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.6-restrict-service-exposure" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- if not $fw.allowedServiceTypes }}
+{{- fail "compliance.frameworks.soc2.allowedServiceTypes must list at least one Service type when this policy is enabled" }}
+{{- end }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Service Exposure at the System Boundary"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Service"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A NodePort Service opens a port on every node, bypassing the ingress
+      controller / load balancer that is supposed to be the managed,
+      monitored entry point; spec.externalIPs lets a Service claim arbitrary
+      IPs and intercept traffic to them (CVE-2020-8554). CC6.6 requires the
+      points where outside traffic can enter to be restricted to managed
+      boundary-protection systems. Service types are restricted to
+      compliance.frameworks.soc2.allowedServiceTypes (default ClusterIP and
+      LoadBalancer), and externalIPs are disallowed. A bare-metal ingress
+      controller that must use NodePort should be covered by a
+      PolicyException, which is itself the documented exception.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.6"
+    compliance.framework/control-text: >-
+      The entity implements logical access security measures to protect
+      against threats from sources outside its system boundaries. (Points of
+      focus: Restricts Access — the types of activities that can occur
+      through a communication channel are restricted; Implements Boundary
+      Protection Systems.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: restrict-service-types
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Service '{{ "{{" }} request.object.metadata.name {{ "}}" }}' has type
+          '{{ "{{" }} request.object.spec.type || 'ClusterIP' {{ "}}" }}' (SOC 2 CC6.6).
+          Allowed types: {{ join ", " $fw.allowedServiceTypes }}. Expose
+          workloads through the ingress controller or a LoadBalancer.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.type || 'ClusterIP' {{ "}}" }}"
+                operator: AnyNotIn
+                value: {{ toJson $fw.allowedServiceTypes }}
+
+    - name: disallow-external-ips
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Service '{{ "{{" }} request.object.metadata.name {{ "}}" }}' sets
+          spec.externalIPs (SOC 2 CC6.6). externalIPs can be used to
+          intercept traffic (CVE-2020-8554); use a LoadBalancer instead.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} length(request.object.spec.externalIPs || `[]`) {{ "}}" }}"
+                operator: GreaterThan
+                value: 0
+{{- end }}

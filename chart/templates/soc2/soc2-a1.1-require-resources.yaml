@@ -1,0 +1,68 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-a1.1-require-resources" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require CPU and Memory Requests and Limits"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Availability category (optional in a SOC 2 report — disable if the
+      report covers Security only). Resource requests are what the scheduler
+      and capacity planning see; without them, cluster capacity demand is
+      unknowable. Limits stop one workload from exhausting a node and taking
+      its neighbours down. Every container must set CPU and memory requests
+      and limits.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "A1.1"
+    compliance.framework/control-text: >-
+      The entity maintains, monitors, and evaluates current processing
+      capacity and use of system components (infrastructure, data, and
+      software) to manage capacity demand and to enable the implementation
+      of additional capacity to help meet its objectives.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-requests-and-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Every container must set resources.requests.cpu, requests.memory,
+          limits.cpu and limits.memory (SOC 2 A1.1).
+        pattern:
+          spec:
+            =(initContainers):
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+            containers:
+              - resources:
+                  requests:
+                    cpu: "?*"
+                    memory: "?*"
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+{{- end }}

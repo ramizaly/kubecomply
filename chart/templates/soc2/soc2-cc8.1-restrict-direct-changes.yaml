@@ -1,0 +1,115 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc8.1-restrict-direct-changes" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $cc := $fw.changeControl | default dict }}
+{{- if not $cc.allowedSubjects }}
+{{- fail "compliance.frameworks.soc2.changeControl.allowedSubjects must list the GitOps/CI identity (and any break-glass group) when soc2-cc8.1-restrict-direct-changes is enabled — otherwise it blocks every change" }}
+{{- end }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Workload Changes and exec to the Approved Change Pipeline"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Deployment, StatefulSet, DaemonSet, CronJob, Service, Ingress, NetworkPolicy, Pod/exec"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      CC8.1 requires changes to be authorized, tested and approved before
+      they are implemented. In a GitOps setup that approval is the reviewed
+      pull request, and the only thing that should apply it is the
+      reconciler (Argo CD / Flux) or CI identity. A human running
+      `kubectl apply/edit/delete` or `kubectl exec` directly against these
+      namespaces bypasses that process entirely. Only subjects listed in
+      compliance.frameworks.soc2.changeControl.allowedSubjects — the
+      pipeline identity plus a named break-glass group for emergency changes
+      — may create, update or delete workload/network objects or exec into
+      Pods. Kubernetes' own kube-system controllers and Kyverno are always
+      allowed. Disabled by default; scope it to production namespaces via
+      the per-policy `namespaces` override.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC8.1"
+    compliance.framework/control-text: >-
+      The entity authorizes, designs, develops or acquires, configures,
+      documents, tests, approves, and implements changes to infrastructure,
+      data, software, and procedures to meet its objectives. (Points of
+      focus: Authorizes Changes; Approves System Changes; Deploys System
+      Changes; Provides for Changes Necessary in Emergency Situations.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  # Rules decide on who made the request (request.userInfo), which only
+  # exists at admission time. A background scan has no requester to check,
+  # so Kyverno requires background: false for subject-based exclusions.
+  background: false
+  rules:
+    - name: changes-only-via-pipeline
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - CronJob
+                - Service
+                - Ingress
+                - NetworkPolicy
+              operations:
+                - CREATE
+                - UPDATE
+                - DELETE
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      exclude:
+        any:
+          - subjects:
+              {{- toYaml $cc.allowedSubjects | nindent 14 }}
+          # Built-in controllers (garbage collector, namespace controller,
+          # ...) and Kyverno itself.
+          - subjects:
+              - kind: Group
+                name: system:serviceaccounts:kube-system
+              - kind: Group
+                name: system:serviceaccounts:kyverno
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          {{ "{{" }} request.operation {{ "}}" }} of {{ "{{" }} request.object.kind || request.oldObject.kind {{ "}}" }}
+          by '{{ "{{" }} request.userInfo.username {{ "}}" }}' bypasses the change
+          pipeline (SOC 2 CC8.1). Submit the change through Git; use the
+          break-glass group for emergencies.
+        deny: {}
+
+    - name: no-exec-outside-break-glass
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod/exec
+                - Pod/attach
+              operations:
+                - CONNECT
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      exclude:
+        any:
+          - subjects:
+              {{- toYaml $cc.allowedSubjects | nindent 14 }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Interactive exec/attach by '{{ "{{" }} request.userInfo.username {{ "}}" }}' into Pod
+          '{{ "{{" }} request.name {{ "}}" }}' is an unapproved change path (SOC 2 CC8.1).
+          Use the break-glass group for emergency access.
+        deny: {}
+{{- end }}

@@ -1,0 +1,62 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-storageclass-encryption" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require StorageClasses to Declare Encryption at Rest"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "StorageClass"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Every StorageClass must provision encrypted volumes (encryption at
+      rest; see soc2-cc6.7-ingress-tls for encryption in transit). Accepted
+      evidence: AWS EBS CSI parameters.encrypted="true"; Azure Disk CSI
+      parameters.diskEncryptionSetID (customer-managed key); GCP PD CSI
+      parameters.disk-encryption-kms-key (CMEK); or, for on-prem backends
+      where encryption is enforced below Kubernetes (e.g. LUKS, Ceph
+      encrypted OSDs), the annotation compliance.storage/encrypted-at-rest="true"
+      as a human-reviewed attestation.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Point of focus:
+      Uses Encryption to Protect Data — the entity uses encryption to
+      supplement other measures used to protect data at rest, when such
+      protections are deemed appropriate based on assessed risk.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    # Keep in sync with the context lookup in soc2-cc6.1-pvc-encrypted-storage.yaml.
+    # compliance.frameworks.soc2.namespaces does not apply here:
+    # StorageClass is cluster-scoped, it has no namespace to filter on.
+    - name: storageclass-declares-encryption
+      match:
+        any:
+          - resources:
+              kinds:
+                - StorageClass
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          StorageClass '{{ "{{" }} request.object.metadata.name {{ "}}" }}' does not declare
+          encryption at rest (SOC 2 CC6.1). Set a provider encryption
+          parameter, or annotate compliance.storage/encrypted-at-rest="true"
+          once backend encryption has been verified.
+        anyPattern:
+          - parameters:
+              encrypted: "true"
+          - parameters:
+              diskEncryptionSetID: "?*"
+          - parameters:
+              disk-encryption-kms-key: "?*"
+          - metadata:
+              annotations:
+                compliance.storage/encrypted-at-rest: "true"
+{{- end }}

@@ -1,0 +1,109 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-pvc-encrypted-storage" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require PVCs to Use an Encrypted StorageClass"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "PersistentVolumeClaim"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      PersistentVolumeClaims must name a StorageClass, and that StorageClass
+      must declare encryption at rest. The StorageClass itself is validated
+      by the companion policy soc2-cc6.1-storageclass-encryption; this policy
+      looks up the referenced StorageClass at admission / scan time via
+      apiCall and applies the same criteria. Requires Kyverno RBAC to read
+      StorageClasses.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Point of focus:
+      Uses Encryption to Protect Data — the entity uses encryption to
+      supplement other measures used to protect data at rest, when such
+      protections are deemed appropriate based on assessed risk.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    # Note: the DefaultStorageClass admission plugin fills storageClassName
+    # before Kyverno sees the request when a default class exists, so this
+    # rule mainly catches clusters without a default class and explicit "".
+    - name: require-storageclass
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          PersistentVolumeClaims must set spec.storageClassName to an
+          encrypted StorageClass (SOC 2 CC6.1).
+        pattern:
+          spec:
+            storageClassName: "?*"
+
+    - name: storageclass-must-be-encrypted
+      match:
+        any:
+          - resources:
+              kinds:
+                - PersistentVolumeClaim
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.storageClassName || '' {{ "}}" }}"
+            operator: NotEquals
+            value: ""
+      context:
+        - name: sc
+          apiCall:
+            urlPath: "/apis/storage.k8s.io/v1/storageclasses/{{ "{{" }} request.object.spec.storageClassName {{ "}}" }}"
+            # Keep in sync with the anyPattern in soc2-cc6.1-storageclass-encryption.yaml.
+            jmesPath: >-
+              {
+                encrypted: parameters.encrypted || '',
+                diskEncryptionSetID: parameters.diskEncryptionSetID || '',
+                kmsKey: parameters."disk-encryption-kms-key" || '',
+                attested: metadata.annotations."compliance.storage/encrypted-at-rest" || ''
+              }
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          StorageClass '{{ "{{" }} request.object.spec.storageClassName {{ "}}" }}' does not
+          declare encryption at rest (SOC 2 CC6.1). See
+          soc2-cc6.1-storageclass-encryption for the accepted criteria.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} sc.encrypted {{ "}}" }}"
+                operator: NotEquals
+                value: "true"
+              - key: "{{ "{{" }} sc.diskEncryptionSetID {{ "}}" }}"
+                operator: Equals
+                value: ""
+              - key: "{{ "{{" }} sc.kmsKey {{ "}}" }}"
+                operator: Equals
+                value: ""
+              - key: "{{ "{{" }} sc.attested {{ "}}" }}"
+                operator: NotEquals
+                value: "true"
+{{- end }}

@@ -1,0 +1,61 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc7.2-require-probes" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require Liveness and Readiness Probes"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      CC7.2 requires system components and their operation to be monitored
+      for anomalies. Liveness and readiness probes are the platform's
+      per-container health signal: without them a hung or failing container
+      is invisible to Kubernetes (and to any alerting built on its
+      events/metrics) and keeps receiving traffic. Every application
+      container must define both.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC7.2"
+    compliance.framework/control-text: >-
+      The entity monitors system components and the operation of those
+      components for anomalies that are indicative of malicious acts,
+      natural disasters, and errors affecting the entity's ability to meet
+      its objectives; anomalies are analyzed to determine whether they
+      represent security events.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    # Init and ephemeral containers are excluded: probes do not apply to them.
+    - name: require-liveness-and-readiness
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Every container must define livenessProbe and readinessProbe
+          (SOC 2 CC7.2).
+        pattern:
+          spec:
+            containers:
+              # periodSeconds is defaulted by the API server whenever a probe
+              # exists, so this matches any configured probe.
+              - livenessProbe:
+                  periodSeconds: ">0"
+                readinessProbe:
+                  periodSeconds: ">0"
+{{- end }}

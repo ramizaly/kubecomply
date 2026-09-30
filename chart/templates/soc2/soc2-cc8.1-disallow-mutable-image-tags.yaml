@@ -1,0 +1,86 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc8.1-disallow-mutable-image-tags" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require Explicit Image Tags (No latest)"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      An untagged or ':latest' image reference means the software actually
+      running can change on the next pull or reschedule with no change to
+      the manifest — a change that was never tracked, tested or approved,
+      and a deployed state that cannot be reproduced or rolled back. Every
+      image must carry an explicit tag other than 'latest' (or a digest).
+      Known gap: a registry host with a port and no tag
+      (registry:5000/app) contains ':' and passes the first rule; the
+      approved-registries policy narrows that in practice.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC8.1"
+    compliance.framework/control-text: >-
+      The entity authorizes, designs, develops or acquires, configures,
+      documents, tests, approves, and implements changes to infrastructure,
+      data, software, and procedures to meet its objectives. (Points of
+      focus: Tracks System Changes; Creates Baseline Configuration of IT
+      Technology.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Every image must specify an explicit tag or digest (SOC 2 CC8.1).
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "*:*"
+            =(initContainers):
+              - image: "*:*"
+            containers:
+              - image: "*:*"
+
+    - name: disallow-latest-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          The ':latest' tag is mutable and not allowed (SOC 2 CC8.1). Pin a
+          versioned tag or a digest.
+        pattern:
+          spec:
+            =(ephemeralContainers):
+              - image: "!*:latest"
+            =(initContainers):
+              - image: "!*:latest"
+            containers:
+              - image: "!*:latest"
+{{- end }}

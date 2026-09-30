@@ -1,0 +1,67 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.3-no-escalation-verbs" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Disallow bind, impersonate and escalate RBAC Verbs"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Role, ClusterRole"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      bind and escalate let a principal grant permissions it doesn't hold;
+      impersonate lets it act as another user, group or ServiceAccount. Any
+      of them lets a holder step outside the role it was authorized for,
+      breaking both least privilege and segregation of duties.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.3"
+    compliance.framework/control-text: >-
+      The entity authorizes, modifies, or removes access to data, software,
+      functions, and other protected information assets based on roles,
+      responsibilities, or the system design and changes, giving
+      consideration to the concepts of least privilege and segregation of
+      duties, to meet the entity's objectives.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: no-privilege-escalation-verbs
+      # compliance.frameworks.soc2.namespaces is intentionally not applied
+      # here: this rule mixes a namespaced kind (Role) with a cluster-scoped
+      # one (ClusterRole).
+      match:
+        any:
+          - resources:
+              kinds:
+                - Role
+                - ClusterRole
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - ClusterRole
+              names:
+                - "system:*"
+                - "cluster-admin"
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          A rule in {{ "{{" }} request.object.kind {{ "}}" }}
+          '{{ "{{" }} request.object.metadata.name {{ "}}" }}' grants bind, impersonate, or
+          escalate (SOC 2 CC6.3). These verbs let a principal expand its own
+          permissions.
+        foreach:
+          - list: "request.object.rules || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.verbs || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      - bind
+                      - impersonate
+                      - escalate
+{{- end }}

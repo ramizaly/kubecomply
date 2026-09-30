@@ -1,0 +1,70 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.3-no-wildcard-rbac" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Disallow Wildcard RBAC Permissions"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Role, ClusterRole"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      A '*' in an RBAC rule grants every current and future verb or resource,
+      so the permission set can never be reviewed against least privilege.
+      Roles and ClusterRoles must list verbs and resources explicitly.
+      Kubernetes' built-in system:* roles and cluster-admin (the intended
+      break-glass role) are excluded.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.3"
+    compliance.framework/control-text: >-
+      The entity authorizes, modifies, or removes access to data, software,
+      functions, and other protected information assets based on roles,
+      responsibilities, or the system design and changes, giving
+      consideration to the concepts of least privilege and segregation of
+      duties, to meet the entity's objectives.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: no-wildcard-verbs-or-resources
+      # compliance.frameworks.soc2.namespaces is intentionally not applied
+      # here: this rule mixes a namespaced kind (Role) with a cluster-scoped
+      # one (ClusterRole).
+      match:
+        any:
+          - resources:
+              kinds:
+                - Role
+                - ClusterRole
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - ClusterRole
+              names:
+                - "system:*"
+                - "cluster-admin"
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          A rule in {{ "{{" }} request.object.kind {{ "}}" }}
+          '{{ "{{" }} request.object.metadata.name {{ "}}" }}' uses a wildcard ('*') in verbs or
+          resources (SOC 2 CC6.3). List permissions explicitly.
+        foreach:
+          # Aggregated ClusterRoles may have no rules of their own.
+          - list: "request.object.rules || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.verbs || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+                  - key: "{{ "{{" }} element.resources || `[]` {{ "}}" }}"
+                    operator: AnyIn
+                    value:
+                      - "*"
+{{- end }}

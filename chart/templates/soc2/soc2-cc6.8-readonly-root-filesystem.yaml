@@ -1,0 +1,60 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.8-readonly-root-filesystem" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require a Read-Only Root Filesystem"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      A writable root filesystem lets an attacker who gains code execution
+      drop and run tools, modify binaries, or persist malware inside the
+      running container, diverging it from the image that was approved.
+      With readOnlyRootFilesystem=true, the running software is exactly the
+      image that went through change control; writable paths must be
+      explicit emptyDir/volume mounts.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.8"
+    compliance.framework/control-text: >-
+      The entity implements controls to prevent or detect and act upon the
+      introduction of unauthorized or malicious software to meet the
+      entity's objectives. (Points of focus: Restricts Application and
+      Software Installation; Detects Unauthorized Changes to Software and
+      Configuration Parameters.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-readonly-root-filesystem
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must set securityContext.readOnlyRootFilesystem=true
+          (SOC 2 CC6.8). Mount an emptyDir for any path the application
+          must write to.
+        pattern:
+          spec:
+            =(initContainers):
+              - securityContext:
+                  readOnlyRootFilesystem: true
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true
+{{- end }}

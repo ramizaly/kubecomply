@@ -1,0 +1,69 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-c1.1-require-data-classification" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- if not $fw.dataClassificationValues }}
+{{- fail "compliance.frameworks.soc2.dataClassificationValues must list at least one value when this policy is enabled" }}
+{{- end }}
+{{- $classes := join " | " $fw.dataClassificationValues }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require a Data-Classification Label on Namespaces"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Namespace"
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      Confidentiality category (optional in a SOC 2 report — disable if the
+      report doesn't include it). Confidential information cannot be
+      protected, retained or disposed of per policy if nobody recorded where
+      it lives. Every Namespace must declare the highest classification of
+      data its workloads handle, from
+      compliance.frameworks.soc2.dataClassificationValues. The label is also
+      a selector later policies (e.g. stricter rules for 'confidential') can
+      key off. Namespace is cluster-scoped: the framework's `namespaces`
+      scope list is applied as a Namespace name filter here.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "C1.1"
+    compliance.framework/control-text: >-
+      The entity identifies and maintains confidential information to meet
+      the entity's objectives related to confidentiality.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-data-classification-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              {{- if not (has "*" $namespaces) }}
+              names:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              names:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - default
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Namespace '{{ "{{" }} request.object.metadata.name {{ "}}" }}' must carry the label
+          'data-classification' with one of: {{ $classes }} (SOC 2 C1.1).
+        pattern:
+          metadata:
+            labels:
+              data-classification: "{{ $classes }}"
+{{- end }}

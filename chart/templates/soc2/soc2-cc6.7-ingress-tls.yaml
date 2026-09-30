@@ -1,0 +1,59 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.7-ingress-tls" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require TLS on Ingress Resources"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Ingress"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      An Ingress with no spec.tls entries serves plaintext HTTP, so data and
+      credentials cross the system boundary unencrypted. CC6.7 requires
+      encryption or secure channels for data transmitted beyond connectivity
+      access points (and CC6.6 requires credentials to be protected in
+      transit outside the boundary). Covers encryption in transit;
+      encryption at rest is soc2-cc6.1-storageclass-encryption /
+      soc2-cc6.1-pvc-encrypted-storage.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.7"
+    compliance.framework/control-text: >-
+      The entity restricts the transmission, movement, and removal of
+      information to authorized internal and external users and processes,
+      and protects it during transmission, movement, or removal to meet the
+      entity's objectives. (Point of focus: Uses Encryption Technologies or
+      Secure Communication Channels to Protect Data.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: ingress-requires-tls
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Ingress '{{ "{{" }} request.object.metadata.name {{ "}}" }}' has no spec.tls
+          entries (SOC 2 CC6.7). Add a tls entry with a secretName
+          referencing a valid TLS Secret.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} length(request.object.spec.tls || `[]`) {{ "}}" }}"
+                operator: Equals
+                value: 0
+{{- end }}

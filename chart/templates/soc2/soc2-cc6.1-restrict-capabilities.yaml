@@ -1,0 +1,75 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-restrict-capabilities" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+{{- $allowed := $fw.allowedCapabilities | default (list) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Added Linux Capabilities to an Allowlist"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      Linux capabilities are slices of root's authority (NET_ADMIN, SYS_ADMIN,
+      SYS_PTRACE, ...). Adding one grants that administrative authority to the
+      container even when it is not privileged. This is an allowlist, not a
+      denylist (unlike iso-a8.18): any capability not listed in
+      compliance.frameworks.soc2.allowedCapabilities is rejected/reported,
+      matching the Pod Security Standards "restricted" profile, which only
+      permits NET_BIND_SERVICE.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Point of focus:
+      Restricts Logical Access — [...] administrative authorities [...] is
+      restricted through the use of access control software and rule sets.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: added-capabilities-in-allowlist
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers may only add Linux capabilities from the allowlist
+          (SOC 2 CC6.1). Allowed: {{ if $allowed }}{{ join ", " $allowed }}{{ else }}none{{ end }}.
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.securityContext.capabilities.add || `[]` {{ "}}" }}"
+                    operator: AnyNotIn
+                    value: {{ toJson $allowed }}
+          - list: "request.object.spec.initContainers || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.securityContext.capabilities.add || `[]` {{ "}}" }}"
+                    operator: AnyNotIn
+                    value: {{ toJson $allowed }}
+          - list: "request.object.spec.ephemeralContainers || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.securityContext.capabilities.add || `[]` {{ "}}" }}"
+                    operator: AnyNotIn
+                    value: {{ toJson $allowed }}
+{{- end }}

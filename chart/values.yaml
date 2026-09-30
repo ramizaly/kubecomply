@@ -73,12 +73,84 @@ compliance:
         - SYS_RAWIO
         - DAC_READ_SEARCH
 
+    # SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022). Policy names
+    # are soc2-<criterion>-<slug>. CC* = Security (always in a SOC 2 report);
+    # A1.* = Availability and C1.* = Confidentiality are optional report
+    # categories — disable those policies below if your report excludes them.
     soc2:
       enabled: false
       mode: audit
       namespaces:
         - "*"
-      policies: {}
+      policies:
+        # Off until a cosign public key + CI signing step exist (see
+        # imageVerification below).
+        soc2-cc6.8-verify-image-signatures:
+          enabled: false
+        # Off until changeControl.allowedSubjects names the real GitOps/CI
+        # identity; then enable and scope to production namespaces, e.g.
+        #   enabled: true
+        #   namespaces: [prod]
+        soc2-cc8.1-restrict-direct-changes:
+          enabled: false
+
+      # Registry allowlist for soc2-cc6.8-approved-registries. Same format as
+      # iso27001.approvedRegistries. CHANGE THIS before promoting to enforce —
+      # placeholder values, not a recommendation.
+      approvedRegistries:
+        - "registry.k8s.io/*"
+        - "ghcr.io/kyverno/*"
+        - "harbor.internal/*"
+
+      # Capabilities containers MAY add (soc2-cc6.1-restrict-capabilities).
+      # Allowlist: anything not listed is a violation. Default matches the
+      # Pod Security Standards "restricted" profile.
+      allowedCapabilities:
+        - NET_BIND_SERVICE
+
+      # Label keys every workload must carry (soc2-cc6.1-require-ownership-labels).
+      requiredLabels:
+        - app.kubernetes.io/name
+        - owner
+
+      # Binding names allowed to reference cluster-admin
+      # (soc2-cc6.3-restrict-cluster-admin-bindings), in addition to the
+      # built-in system:* / kubeadm:* bindings. Put your break-glass binding here.
+      allowedClusterAdminBindings: []
+
+      # Service types allowed by soc2-cc6.6-restrict-service-exposure.
+      allowedServiceTypes:
+        - ClusterIP
+        - LoadBalancer
+
+      # soc2-cc6.8-verify-image-signatures (disabled above by default).
+      imageVerification:
+        imageReferences:
+          - "harbor.internal/*"
+        # cosign public key, PEM. Required when the policy is enabled.
+        publicKey: ""
+
+      # soc2-cc8.1-restrict-direct-changes (disabled above by default).
+      # Kyverno subject entries allowed to change workloads / exec into Pods:
+      # the GitOps reconciler or CI identity, plus a break-glass group.
+      changeControl:
+        allowedSubjects: []
+        # - kind: ServiceAccount
+        #   name: argocd-application-controller
+        #   namespace: argocd
+        # - kind: Group
+        #   name: platform-break-glass
+
+      # Minimum replicas for Deployments/StatefulSets (soc2-a1.2-require-replicas).
+      minReplicas: 2
+
+      # Accepted values for the Namespace label 'data-classification'
+      # (soc2-c1.1-require-data-classification).
+      dataClassificationValues:
+        - public
+        - internal
+        - confidential
+        - restricted
 
     hipaa:
       enabled: false

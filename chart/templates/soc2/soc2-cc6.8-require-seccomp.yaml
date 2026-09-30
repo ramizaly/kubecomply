@@ -1,0 +1,85 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.8-require-seccomp" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Require a Seccomp Profile (RuntimeDefault or Localhost)"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/description: >-
+      Kubernetes runs containers Unconfined by default: every syscall is
+      available, including the rarely-needed ones most container-escape and
+      kernel exploits rely on. A seccomp profile (RuntimeDefault, or a custom
+      Localhost profile) is the kernel-level control that stops malicious
+      code from using those syscalls even after it runs. Set it at Pod
+      level, or on every container; Unconfined is never accepted.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.8"
+    compliance.framework/control-text: >-
+      The entity implements controls to prevent or detect and act upon the
+      introduction of unauthorized or malicious software to meet the
+      entity's objectives.
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: require-seccomp-profile
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          A seccomp profile of type RuntimeDefault or Localhost is required
+          (SOC 2 CC6.8). Set spec.securityContext.seccompProfile.type at Pod
+          level, or on every container; Unconfined is not allowed.
+        anyPattern:
+          # Option 1: set at Pod level; containers may not override it to Unconfined.
+          - spec:
+              securityContext:
+                seccompProfile:
+                  type: "RuntimeDefault | Localhost"
+              =(ephemeralContainers):
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): "RuntimeDefault | Localhost"
+              =(initContainers):
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): "RuntimeDefault | Localhost"
+              containers:
+                - =(securityContext):
+                    =(seccompProfile):
+                      =(type): "RuntimeDefault | Localhost"
+          # Option 2: set explicitly on every container.
+          - spec:
+              =(securityContext):
+                =(seccompProfile):
+                  =(type): "RuntimeDefault | Localhost"
+              =(ephemeralContainers):
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+              =(initContainers):
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+              containers:
+                - securityContext:
+                    seccompProfile:
+                      type: "RuntimeDefault | Localhost"
+{{- end }}

@@ -1,0 +1,115 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.1-restrict-host-access" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Restrict Access to Host Namespaces, Filesystem and Ports"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      hostNetwork, hostPID, hostIPC, hostPath volumes and hostPorts each
+      break the isolation boundary between a workload and the node (and every
+      other workload on that node): they expose the node's network stack,
+      process table, shared memory, filesystem and ports. CC6.1 requires
+      access to hardware and infrastructure to be restricted by rule sets,
+      and segmentation to keep unrelated parts of the system isolated.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.1"
+    compliance.framework/control-text: >-
+      The entity implements logical access security software, infrastructure,
+      and architectures over protected information assets to protect them
+      from security events to meet the entity's objectives. (Points of focus:
+      Restricts Logical Access; Considers Network Segmentation — network
+      segmentation permits unrelated portions of the entity's information
+      system to be isolated from each other.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  background: true
+  rules:
+    - name: disallow-host-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Pods must not set hostNetwork, hostPID or hostIPC to true
+          (SOC 2 CC6.1).
+        pattern:
+          spec:
+            =(hostNetwork): "false"
+            =(hostPID): "false"
+            =(hostIPC): "false"
+
+    - name: disallow-hostpath-volumes
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Pods must not define a hostPath volume (SOC 2 CC6.1).
+        foreach:
+          - list: "request.object.spec.volumes || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.hostPath {{ "}}" }}"
+                    operator: NotEquals
+                    value: null
+
+    - name: disallow-host-ports
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      validate:
+        failureAction: {{ $mode | lower | title }}
+        message: >-
+          Containers must not set a container port's hostPort (SOC 2 CC6.1).
+          Expose the workload through a Service instead.
+        foreach:
+          - list: "request.object.spec.containers[].ports[] || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.hostPort || `0` {{ "}}" }}"
+                    operator: GreaterThan
+                    value: 0
+          - list: "request.object.spec.initContainers[].ports[] || `[]`"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ "{{" }} element.hostPort || `0` {{ "}}" }}"
+                    operator: GreaterThan
+                    value: 0
+{{- end }}

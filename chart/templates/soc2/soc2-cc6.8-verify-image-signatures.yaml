@@ -1,0 +1,77 @@
+{{- $fw := .Values.compliance.frameworks.soc2 -}}
+{{- $name := "soc2-cc6.8-verify-image-signatures" -}}
+{{- if eq (include "compliance.policyEnabled" (dict "framework" $fw "name" $name)) "true" }}
+{{- $mode := include "compliance.policyMode" (dict "framework" $fw "name" $name) }}
+{{- $iv := $fw.imageVerification | default dict }}
+{{- if not $iv.publicKey }}
+{{- fail "compliance.frameworks.soc2.imageVerification.publicKey must be set (cosign public key, PEM) when soc2-cc6.8-verify-image-signatures is enabled" }}
+{{- end }}
+{{- if not $iv.imageReferences }}
+{{- fail "compliance.frameworks.soc2.imageVerification.imageReferences must list at least one image pattern when soc2-cc6.8-verify-image-signatures is enabled" }}
+{{- end }}
+{{- $namespaces := splitList "," (include "compliance.namespaces" (dict "framework" $fw "name" $name)) }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ $name }}
+  annotations:
+    policies.kyverno.io/title: "Verify Container Image Signatures"
+    policies.kyverno.io/category: "SOC 2"
+    policies.kyverno.io/subject: "Pod"
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/description: >-
+      An approved registry (soc2-cc6.8-approved-registries) says where an
+      image came from; a signature says the image is the one your pipeline
+      built and approved, and has not been swapped or tampered with since.
+      Images matching compliance.frameworks.soc2.imageVerification.imageReferences
+      must carry a valid cosign signature made with the configured public
+      key. Disabled by default: it needs a real signing key and a signing
+      step in CI before it can do anything but fail.
+    compliance.framework/name: "SOC 2 (AICPA Trust Services Criteria 2017, rev. 2022)"
+    compliance.framework/control-id: "CC6.8"
+    compliance.framework/control-text: >-
+      The entity implements controls to prevent or detect and act upon the
+      introduction of unauthorized or malicious software to meet the
+      entity's objectives. (Points of focus: Restricts Application and
+      Software Installation; Uses a Defined Change Control Process — a
+      management-defined change control process is used for the
+      implementation of software.)
+    compliance.mode: "{{ $mode }}"
+spec:
+  # Signature checks call out to the registry for every image, so this is
+  # evaluated at admission only rather than re-fetched on every background
+  # scan cycle. Admission-time Audit results still land in PolicyReports.
+  background: false
+  # Registry round-trips can exceed the default 10s webhook timeout.
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-cosign-signature
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              {{- if not (has "*" $namespaces) }}
+              namespaces:
+                {{- range $namespaces }}
+                - {{ . }}
+                {{- end }}
+              {{- end }}
+      verifyImages:
+        - failureAction: {{ $mode | lower | title }}
+          imageReferences:
+            {{- range $iv.imageReferences }}
+            - {{ . | quote }}
+            {{- end }}
+          # Validate only: never rewrite the Pod's image references (keeps
+          # this policy consistent with the rest of the chart, which only
+          # ever reports or rejects, never mutates).
+          mutateDigest: false
+          verifyDigest: false
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: |-
+                      {{- $iv.publicKey | trim | nindent 22 }}
+{{- end }}
